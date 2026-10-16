@@ -19,6 +19,7 @@ import {
   HostAppearanceSchema,
 } from "@/hosts/appearance";
 import { z } from "zod";
+import { normalizeConnectionHeadersRecord } from "@/utils/cloudflare-access";
 
 export { DirectTcpHostConnectionSchema };
 export type DirectTcpHostConnection = Omit<WireDirectTcpHostConnection, "password">;
@@ -123,13 +124,29 @@ export function resolveActiveHostServerId(params: {
   );
 }
 
+function stringRecordEquals(
+  left: Record<string, string> | undefined,
+  right: Record<string, string> | undefined,
+): boolean {
+  const leftEntries = Object.entries(left ?? {});
+  const rightRecord = right ?? {};
+  return (
+    leftEntries.length === Object.keys(rightRecord).length &&
+    leftEntries.every(([key, value]) => rightRecord[key] === value)
+  );
+}
+
 function hostConnectionEquals(left: HostConnection, right: HostConnection): boolean {
   if (left.type !== right.type || left.id !== right.id) {
     return false;
   }
 
   if (left.type === "directTcp" && right.type === "directTcp") {
-    return left.endpoint === right.endpoint && (left.useTls ?? false) === (right.useTls ?? false);
+    return (
+      left.endpoint === right.endpoint &&
+      (left.useTls ?? false) === (right.useTls ?? false) &&
+      stringRecordEquals(left.headers, right.headers)
+    );
   }
   if (left.type === "directSocket" && right.type === "directSocket") {
     return left.path === right.path;
@@ -405,6 +422,7 @@ const StoredHostConnectionSchema = z.discriminatedUnion("type", [
     endpoint: z.string(),
     useTls: z.boolean().optional(),
     password: z.string().optional(),
+    headers: z.record(z.string(), z.string()).optional(),
   }),
   z.strictObject({
     id: z.string().optional(),
@@ -455,7 +473,14 @@ function normalizeStoredConnection(connection: StoredHostConnection): HostConnec
         endpoint,
         useTls: connection.useTls,
       });
-      return { id: parsed.id, type: parsed.type, endpoint: parsed.endpoint, useTls: parsed.useTls };
+      const headers = normalizeConnectionHeadersRecord(connection.headers);
+      return {
+        id: parsed.id,
+        type: parsed.type,
+        endpoint: parsed.endpoint,
+        useTls: parsed.useTls,
+        ...(headers ? { headers } : {}),
+      };
     } catch {
       return null;
     }

@@ -202,3 +202,91 @@ describe("local transport session lifecycle", () => {
     expect(events).toEqual([]);
   });
 });
+
+describe("remote WebSocket desktop transport (Cloudflare Access)", () => {
+  it("parses a header-carrying websocket target", () => {
+    expect(
+      parseTransportTarget({
+        transportType: "websocket",
+        url: "wss://daemon.example.com:443/ws",
+        headers: {
+          "CF-Access-Client-Id": "id.access",
+          "CF-Access-Client-Secret": "secret-value",
+        },
+      }),
+    ).toEqual({
+      transportType: "websocket",
+      url: "wss://daemon.example.com/ws",
+      headers: {
+        "CF-Access-Client-Id": "id.access",
+        "CF-Access-Client-Secret": "secret-value",
+      },
+    });
+  });
+
+  it("rejects unsafe websocket targets at the IPC boundary", () => {
+    expect(() => parseTransportTarget({ transportType: "websocket", url: "http://x/y" })).toThrow(
+      "WebSocket transport URL must use ws:// or wss://.",
+    );
+    expect(() => parseTransportTarget({ transportType: "websocket", url: "not a url" })).toThrow(
+      "WebSocket transport URL is invalid.",
+    );
+    expect(() =>
+      parseTransportTarget({
+        transportType: "websocket",
+        url: "wss://daemon.example.com/ws",
+        headers: { "Bad Name": "value" },
+      }),
+    ).toThrow("WebSocket transport header is invalid.");
+    expect(() =>
+      parseTransportTarget({
+        transportType: "websocket",
+        url: "wss://daemon.example.com/ws",
+        headers: { "CF-Access-Client-Id": "a\nb" },
+      }),
+    ).toThrow("WebSocket transport header is invalid.");
+    expect(() =>
+      parseTransportTarget({
+        transportType: "websocket",
+        url: "wss://daemon.example.com/ws",
+        protocols: [],
+      }),
+    ).toThrow("WebSocket transport protocols must be a non-empty string array.");
+  });
+
+  it("passes upgrade headers to the main-process socket", async () => {
+    const socket = createConnectingSocket();
+    const createWebSocket = vi.fn(() => socket);
+    const manager = createLocalTransportManager({
+      resolveEndpoint: async (target) => ({
+        url: target.transportType === "websocket" ? target.url : "ws://127.0.0.1:12345/ws",
+        close: vi.fn(),
+        failureDetail: () => null,
+      }),
+      createWebSocket,
+      scheduleTimeout: () => () => undefined,
+      emitEvent: () => undefined,
+    });
+
+    manager.open({
+      sessionId: "local-session-cf",
+      target: {
+        transportType: "websocket",
+        url: "wss://daemon.example.com:443/ws",
+        headers: {
+          "CF-Access-Client-Id": "id.access",
+          "CF-Access-Client-Secret": "secret-value",
+        },
+      },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(createWebSocket).toHaveBeenCalledWith("wss://daemon.example.com/ws", {
+      headers: {
+        "CF-Access-Client-Id": "id.access",
+        "CF-Access-Client-Secret": "secret-value",
+      },
+    });
+  });
+});

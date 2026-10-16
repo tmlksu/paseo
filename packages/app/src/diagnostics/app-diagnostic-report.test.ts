@@ -24,6 +24,10 @@ function makeHost(): HostProfile {
         type: "directTcp",
         endpoint: "secret.example.test:6767",
         useTls: true,
+        headers: {
+          "CF-Access-Client-Id": "cf-client-id-secret",
+          "CF-Access-Client-Secret": "cf-client-token-secret",
+        },
       },
       {
         id: "relay:relay.secret.test:443",
@@ -109,6 +113,8 @@ describe("app diagnostics report", () => {
         "\\\\.\\pipe\\paseo-secret",
         "password=tcp-password",
         "paseo://pairing-secret",
+        "CF-Access-Client-Id: cf-client-id-secret",
+        "CF-Access-Client-Secret=cf-client-token-secret",
       ].join("\n"),
       [host],
     );
@@ -120,5 +126,7 @@ describe("app diagnostics report", () => {
     expect(redacted).not.toContain("\\\\.\\pipe\\paseo-secret");
     expect(redacted).not.toContain("tcp-password");
     expect(redacted).not.toContain("pairing-secret");
+    expect(redacted).not.toContain("cf-client-id-secret");
+    expect(redacted).not.toContain("cf-client-token-secret");
   });
 });

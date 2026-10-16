@@ -71,7 +71,22 @@ export interface RemoteSshTransportTarget {
   daemonPort?: number;
 }
 
-export type DesktopDaemonTransportTarget = LocalTransportTarget | RemoteSshTransportTarget;
+// Fork: remote WebSocket sessions relayed through the Electron main process
+// (Node `ws`) so upgrade headers (Cloudflare Access service tokens) can be
+// set. Used only for header-carrying connections; headerless direct
+// connections keep the renderer WebSocket (upstream #3067).
+export interface WebSocketTransportTarget {
+  [key: string]: unknown;
+  transportType: "websocket";
+  url: string;
+  headers?: Record<string, string>;
+  protocols?: string[];
+}
+
+export type DesktopDaemonTransportTarget =
+  | LocalTransportTarget
+  | RemoteSshTransportTarget
+  | WebSocketTransportTarget;
 
 export interface OpenLocalTransportSessionInput {
   [key: string]: unknown;

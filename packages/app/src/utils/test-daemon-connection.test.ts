@@ -49,6 +49,9 @@ class FakeDaemonProbe {
       if (target.transportType === "ssh") {
         return `paseo+desktop://ssh?host=${encodeURIComponent(target.host)}`;
       }
+      if (target.transportType === "websocket") {
+        return target.url;
+      }
       return `paseo+desktop://${target.transportType}?path=${encodeURIComponent(target.transportPath)}`;
     },
     createClient: (config) => {
@@ -127,6 +130,63 @@ describe("test-daemon-connection connectToDaemon", () => {
     await result.client.close();
 
     expect(probe.createdConfigs()[0]?.transportFactory).toBeUndefined();
+  });
+
+  it("carries connection headers on the probe handshake factory (Cloudflare Access)", async () => {
+    // Regression test for upstream #3151: the Add Host probe dropped
+    // configured headers because it never installed a header-capable
+    // WebSocket factory, so Cloudflare Access answered 200 instead of 101.
+    const { connectToDaemon } = await import("./test-daemon-connection");
+    const { createAppWebSocketFactory } = await import("@/runtime/websocket-factory");
+    const headers = {
+      "CF-Access-Client-Id": "id.access",
+      "CF-Access-Client-Secret": "secret-value",
+    };
+    const result = await connectToDaemon(
+      {
+        id: "direct:daemon.example.com:443",
+        type: "directTcp",
+        endpoint: "daemon.example.com:443",
+        useTls: true,
+        headers,
+      },
+      undefined,
+      probe.deps,
+    );
+    await result.client.close();
+
+    const config = probe.createdConfigs()[0];
+    expect(config?.headers).toEqual(headers);
+    expect(config?.transportFactory).toBeUndefined();
+    // The probe installs the same factory the live client uses; without it
+    // DaemonClient falls back to the header-dropping default factory.
+    expect(config?.webSocketFactory).toBe(createAppWebSocketFactory());
+  });
+
+  it("routes header-carrying probes through the desktop bridge when available", async () => {
+    const { connectToDaemon } = await import("./test-daemon-connection");
+    const bridgeFactory = (() => {}) as unknown as DaemonClientConfig["transportFactory"];
+    const headers = { "CF-Access-Client-Id": "id.access" };
+    const result = await connectToDaemon(
+      {
+        id: "direct:daemon.example.com:443",
+        type: "directTcp",
+        endpoint: "daemon.example.com:443",
+        useTls: true,
+        headers,
+      },
+      undefined,
+      {
+        ...probe.deps,
+        createWebSocketTransportFactory: () => bridgeFactory,
+      },
+    );
+    await result.client.close();
+
+    const config = probe.createdConfigs()[0];
+    expect(config?.transportFactory).toBe(bridgeFactory);
+    expect(config?.webSocketFactory).toBeUndefined();
+    expect(config?.headers).toEqual(headers);
   });
 
   it("encodes the local socket target into the client config", async () => {

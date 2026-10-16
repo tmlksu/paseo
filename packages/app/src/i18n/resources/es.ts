@@ -1751,6 +1751,10 @@ export const es: TranslationResources = {
         title: "Conexión directa",
         description: "Red local o VPN.",
       },
+      cloudflareAccess: {
+        title: "Cloudflare Access",
+        description: "Tunnel + Access with a service token.",
+      },
       remoteSsh: {
         title: "SSH remoto",
         description: "Conéctate mediante el cliente SSH de escritorio.",
@@ -1805,6 +1809,34 @@ export const es: TranslationResources = {
         unableToConnect:
           "No se puede conectar. Verifique el host/porty que se pueda acceder al demonio.",
         details: "Detalles:{{detail}}",
+      },
+    },
+    cloudflareAccess: {
+      title: "Cloudflare Access",
+      helper: "Connect to a Paseo daemon behind Cloudflare Tunnel + Access with a service token.",
+      fields: {
+        host: "Host",
+        port: "Port",
+        clientId: "Client ID",
+        clientSecret: "Client Secret",
+        password: "Daemon password",
+        optional: "Optional",
+        useSsl: "Use SSL",
+      },
+      passwordVisibility: {
+        show: "Show secret",
+        hide: "Hide secret",
+      },
+      actions: {
+        cancel: "Cancel",
+        connect: "Connect",
+        connecting: "Connecting...",
+      },
+      errors: {
+        hostRequired: "Host is required",
+        invalidPort: "Port must be between 1 and 65535",
+        credentialsRequired: "Client ID and client secret are required",
+        failedToConnect: "Unable to connect through Cloudflare Access. {{detail}}",
       },
     },
     remoteSsh: {
@@ -1922,6 +1954,8 @@ export const es: TranslationResources = {
   downloads: {
     requestTokenFailed: "No se pudo solicitar el token de descarga.",
     hostUnavailable: "El host de descarga no está disponible.",
+    cloudflareAccessUnsupported:
+      "File downloads over Cloudflare Access aren't supported on desktop yet. Use the mobile app to download this file.",
     cancelled: "La descarga fue cancelada.",
     failed: "No se pudo descargar el archivo.",
     shareFile: "compartir archivo",

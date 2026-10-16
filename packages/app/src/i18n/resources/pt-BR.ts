@@ -1736,6 +1736,10 @@ export const ptBR: TranslationResources = {
         title: "Conexão direta",
         description: "Rede local ou VPN.",
       },
+      cloudflareAccess: {
+        title: "Cloudflare Access",
+        description: "Tunnel + Access with a service token.",
+      },
       remoteSsh: {
         title: "SSH remoto",
         description: "Conecte-se pelo cliente SSH do desktop.",
@@ -1790,6 +1794,34 @@ export const ptBR: TranslationResources = {
         unableToConnect:
           "Não foi possível conectar. Verifique o host/porta e se o daemon está acessível.",
         details: "Detalhes: {{detail}}",
+      },
+    },
+    cloudflareAccess: {
+      title: "Cloudflare Access",
+      helper: "Connect to a Paseo daemon behind Cloudflare Tunnel + Access with a service token.",
+      fields: {
+        host: "Host",
+        port: "Port",
+        clientId: "Client ID",
+        clientSecret: "Client Secret",
+        password: "Daemon password",
+        optional: "Optional",
+        useSsl: "Use SSL",
+      },
+      passwordVisibility: {
+        show: "Show secret",
+        hide: "Hide secret",
+      },
+      actions: {
+        cancel: "Cancel",
+        connect: "Connect",
+        connecting: "Connecting...",
+      },
+      errors: {
+        hostRequired: "Host is required",
+        invalidPort: "Port must be between 1 and 65535",
+        credentialsRequired: "Client ID and client secret are required",
+        failedToConnect: "Unable to connect through Cloudflare Access. {{detail}}",
       },
     },
     remoteSsh: {
@@ -1907,6 +1939,8 @@ export const ptBR: TranslationResources = {
   downloads: {
     requestTokenFailed: "Falha ao solicitar token de download.",
     hostUnavailable: "Host de download indisponível.",
+    cloudflareAccessUnsupported:
+      "File downloads over Cloudflare Access aren't supported on desktop yet. Use the mobile app to download this file.",
     cancelled: "Download cancelado.",
     failed: "Falha ao baixar arquivo.",
     shareFile: "Compartilhar arquivo",

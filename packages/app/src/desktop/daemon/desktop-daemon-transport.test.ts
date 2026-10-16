@@ -1,9 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildDesktopDaemonTransportUrl,
   createDesktopDaemonTransportFactory,
+  createDesktopWebSocketTransportFactory,
 } from "./desktop-daemon-transport";
 import { createFakeLocalDaemonTransportRpc } from "./test-local-daemon-transport-rpc";
+
+let mockIsElectronRuntime = false;
+vi.mock("@/desktop/host", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/desktop/host")>();
+  return { ...actual, isElectronRuntime: () => mockIsElectronRuntime };
+});
 
 const LOCAL_URL = "paseo+desktop://socket?path=%2Ftmp%2Fpaseo.sock";
 
@@ -107,5 +114,42 @@ describe("desktop-daemon-transport", () => {
     });
 
     expect(() => transportFactory!({ url })).toThrow("Invalid SSH transport target");
+  });
+});
+
+describe("desktop WebSocket bridge (Cloudflare Access)", () => {
+  beforeEach(() => {
+    mockIsElectronRuntime = false;
+  });
+
+  it("is unavailable outside Electron", () => {
+    expect(createDesktopWebSocketTransportFactory(createFakeLocalDaemonTransportRpc())).toBeNull();
+  });
+
+  it("opens a header-carrying remote session through the main process", async () => {
+    mockIsElectronRuntime = true;
+    const rpc = createFakeLocalDaemonTransportRpc();
+    const transportFactory = createDesktopWebSocketTransportFactory(rpc);
+    expect(transportFactory).not.toBeNull();
+
+    transportFactory!({
+      url: "wss://daemon.example.com:443/ws",
+      headers: {
+        "CF-Access-Client-Id": "id.access",
+        "CF-Access-Client-Secret": "secret-value",
+      },
+    });
+    rpc.resolveListen(vi.fn());
+    await Promise.resolve();
+
+    expect(rpc.openCalls).toHaveLength(1);
+    expect(rpc.openCalls[0]?.target).toEqual({
+      transportType: "websocket",
+      url: "wss://daemon.example.com:443/ws",
+      headers: {
+        "CF-Access-Client-Id": "id.access",
+        "CF-Access-Client-Secret": "secret-value",
+      },
+    });
   });
 });

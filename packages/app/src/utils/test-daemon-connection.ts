@@ -16,8 +16,11 @@ import {
 import {
   buildDesktopDaemonTransportUrl,
   createDesktopDaemonTransportFactory,
+  createDesktopWebSocketTransportFactory,
 } from "@/desktop/daemon/desktop-daemon-transport";
 import type { DesktopDaemonTransportTarget } from "@/desktop/daemon/desktop-daemon";
+import { createAppWebSocketFactory } from "@/runtime/websocket-factory";
+import { hasConnectionHeaders, selectDirectTcpTransport } from "@/utils/cloudflare-access";
 
 export interface DaemonProbeClient {
   readonly lastError: string | null;
@@ -31,6 +34,10 @@ export interface DaemonConnectionDependencies<TClient extends DaemonProbeClient>
   getClientId(): Promise<string>;
   resolveAppVersion(): string | null;
   createDesktopTransportFactory(): DaemonClientConfig["transportFactory"] | null;
+  // Fork: main-process WebSocket bridge, used only for header-carrying
+  // direct connections (Cloudflare Access). Restored for upstream #3151;
+  // headerless probes must not touch it (upstream #3067).
+  createWebSocketTransportFactory?(): DaemonClientConfig["transportFactory"] | null;
   buildDesktopTransportUrl(input: DesktopDaemonTransportTarget): string;
   createClient(config: DaemonClientConfig): TClient;
 }
@@ -39,6 +46,7 @@ const defaultDaemonConnectionDependencies: DaemonConnectionDependencies<DaemonCl
   getClientId: getOrCreateClientId,
   resolveAppVersion,
   createDesktopTransportFactory: createDesktopDaemonTransportFactory,
+  createWebSocketTransportFactory: createDesktopWebSocketTransportFactory,
   buildDesktopTransportUrl: buildDesktopDaemonTransportUrl,
   createClient: (config) => new DaemonClient(config),
 };
@@ -143,6 +151,7 @@ export async function buildClientConfig(
     | "getClientId"
     | "resolveAppVersion"
     | "createDesktopTransportFactory"
+    | "createWebSocketTransportFactory"
     | "buildDesktopTransportUrl"
   > = defaultDaemonConnectionDependencies,
 ): Promise<DaemonClientConfig> {
@@ -183,9 +192,19 @@ export async function buildClientConfig(
   }
 
   if (connection.type === "directTcp") {
+    // Fork (#3151): the probe config carries the connection headers and a
+    // header-capable WebSocket factory, mirroring the live client. Without
+    // the factory, DaemonClient falls back to the header-dropping default
+    // and Cloudflare Access answers 200 instead of 101.
     return {
       ...base,
+      ...selectDirectTcpTransport({
+        headers: connection.headers,
+        createBridgeFactory: () => deps.createWebSocketTransportFactory?.() ?? null,
+        webSocketFactory: createAppWebSocketFactory(),
+      }),
       url: buildDaemonWebSocketUrl(connection.endpoint, { useTls: connection.useTls ?? false }),
+      ...(hasConnectionHeaders(connection.headers) ? { headers: connection.headers } : {}),
     };
   }
 

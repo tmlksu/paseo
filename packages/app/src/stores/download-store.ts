@@ -4,6 +4,7 @@ import * as LegacyFileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import type { HostProfile } from "@/types/host-connection";
 import { buildDaemonWebSocketUrl } from "@/utils/daemon-endpoints";
+import { hasConnectionHeaders } from "@/utils/cloudflare-access";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { isWeb } from "@/constants/platform";
 import { i18n } from "@/i18n/i18next";
@@ -93,6 +94,12 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
       if (!downloadTarget.baseUrl) {
         throw new Error(i18n.t("downloads.hostUnavailable"));
       }
+      // Fork: an anchor-click download cannot send upgrade headers, so a
+      // Cloudflare Access connection cannot download on web/desktop. Fail
+      // with guidance instead of saving the Access login page as the file.
+      if (isWeb && downloadTarget.headers) {
+        throw new Error(i18n.t("downloads.cloudflareAccessUnsupported"));
+      }
 
       const resolvedFileName = tokenResponse.fileName ?? fileName;
       const downloadUrl = buildDownloadUrl(
@@ -112,9 +119,7 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
       const downloadResumable = LegacyFileSystem.createDownloadResumable(
         downloadUrl,
         targetFile.uri,
-        downloadTarget.authHeader
-          ? { headers: { Authorization: downloadTarget.authHeader } }
-          : undefined,
+        buildNativeDownloadRequestHeaders(downloadTarget),
         (data) => {
           const now = Date.now();
           const { totalBytesWritten, totalBytesExpectedToWrite } = data;
@@ -242,12 +247,27 @@ interface DownloadTarget {
   baseUrl: string | null;
   authHeader: string | null;
   authCredentials: { username: string; password: string } | null;
+  // Fork: Cloudflare Access service-token headers. Sent on native HTTP
+  // downloads; web cannot send them (see the isWeb guard in startDownload).
+  headers: Record<string, string> | null;
+}
+
+// Fork: merge order matches the WebSocket client (password Authorization
+// wins over a caller-supplied Authorization header).
+export function buildNativeDownloadRequestHeaders(
+  downloadTarget: DownloadTarget,
+): { headers: Record<string, string> } | undefined {
+  const headers: Record<string, string> = { ...downloadTarget.headers };
+  if (downloadTarget.authHeader) {
+    headers.Authorization = downloadTarget.authHeader;
+  }
+  return Object.keys(headers).length > 0 ? { headers } : undefined;
 }
 
 function resolveDaemonDownloadTarget(daemon?: HostProfile): DownloadTarget {
   const connection = daemon?.connections.find((conn) => conn.type === "directTcp") ?? null;
   if (!connection) {
-    return { baseUrl: null, authHeader: null, authCredentials: null };
+    return { baseUrl: null, authHeader: null, authCredentials: null, headers: null };
   }
 
   let parsed: URL;
@@ -256,7 +276,7 @@ function resolveDaemonDownloadTarget(daemon?: HostProfile): DownloadTarget {
       buildDaemonWebSocketUrl(connection.endpoint, { useTls: connection.useTls ?? false }),
     );
   } catch {
-    return { baseUrl: null, authHeader: null, authCredentials: null };
+    return { baseUrl: null, authHeader: null, authCredentials: null, headers: null };
   }
 
   if (parsed.protocol === "ws:") {
@@ -281,8 +301,9 @@ function resolveDaemonDownloadTarget(daemon?: HostProfile): DownloadTarget {
   const authHeader = authCredentials
     ? `Basic ${btoa(`${authCredentials.username}:${authCredentials.password}`)}`
     : null;
+  const headers = hasConnectionHeaders(connection.headers) ? connection.headers : null;
 
-  return { baseUrl, authHeader, authCredentials };
+  return { baseUrl, authHeader, authCredentials, headers };
 }
 
 function buildDownloadUrl(

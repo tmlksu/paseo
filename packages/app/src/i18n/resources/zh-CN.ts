@@ -1687,6 +1687,10 @@ export const zhCN: TranslationResources = {
         title: "直接连接",
         description: "本地网络或 VPN。",
       },
+      cloudflareAccess: {
+        title: "Cloudflare Access",
+        description: "Tunnel + Access with a service token.",
+      },
       remoteSsh: {
         title: "远程 SSH",
         description: "通过桌面 SSH 客户端连接。",
@@ -1739,6 +1743,34 @@ export const zhCN: TranslationResources = {
         tlsError: "TLS 错误。只有 daemon 前方有 TLS terminator 时，直接连接才使用 SSL。",
         unableToConnect: "无法连接。请检查 host/port，并确认 daemon 可达。",
         details: "详情：{{detail}}",
+      },
+    },
+    cloudflareAccess: {
+      title: "Cloudflare Access",
+      helper: "Connect to a Paseo daemon behind Cloudflare Tunnel + Access with a service token.",
+      fields: {
+        host: "Host",
+        port: "Port",
+        clientId: "Client ID",
+        clientSecret: "Client Secret",
+        password: "Daemon password",
+        optional: "Optional",
+        useSsl: "Use SSL",
+      },
+      passwordVisibility: {
+        show: "Show secret",
+        hide: "Hide secret",
+      },
+      actions: {
+        cancel: "Cancel",
+        connect: "Connect",
+        connecting: "Connecting...",
+      },
+      errors: {
+        hostRequired: "Host is required",
+        invalidPort: "Port must be between 1 and 65535",
+        credentialsRequired: "Client ID and client secret are required",
+        failedToConnect: "Unable to connect through Cloudflare Access. {{detail}}",
       },
     },
     remoteSsh: {
@@ -1852,6 +1884,8 @@ export const zhCN: TranslationResources = {
   downloads: {
     requestTokenFailed: "请求下载 token 失败。",
     hostUnavailable: "下载 Host 不可用。",
+    cloudflareAccessUnsupported:
+      "File downloads over Cloudflare Access aren't supported on desktop yet. Use the mobile app to download this file.",
     cancelled: "下载已取消。",
     failed: "下载文件失败。",
     shareFile: "共享文件",

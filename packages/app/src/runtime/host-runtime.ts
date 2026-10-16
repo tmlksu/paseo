@@ -45,6 +45,7 @@ import {
 import {
   buildDesktopDaemonTransportUrl,
   createDesktopDaemonTransportFactory,
+  createDesktopWebSocketTransportFactory,
 } from "@/desktop/daemon/desktop-daemon-transport";
 import { getDesktopHost } from "@/desktop/host";
 import { readDesktopManagedLocalCredential } from "@/desktop/daemon/local-credential";
@@ -86,6 +87,7 @@ import { projectIconCache } from "@/projects/icon-cache";
 import { nativePerformanceTrace } from "@/performance/native-trace";
 import { revokePushNotifications } from "@/push-notifications";
 import { createAppWebSocketFactory } from "./websocket-factory";
+import { hasConnectionHeaders, selectDirectTcpTransport } from "@/utils/cloudflare-access";
 
 export type HostRuntimeConnectionStatus = "idle" | "connecting" | "online" | "offline" | "error";
 export type PairingNavigationTarget = "openProject" | "hostRoot" | "hostSettings";
@@ -575,12 +577,21 @@ function createDefaultDeps(): HostRuntimeControllerDeps {
         });
       }
       if (connection.type === "directTcp") {
+        // Fork: header-carrying connections (Cloudflare Access) dial
+        // through the Electron main-process bridge, which can set upgrade
+        // headers. Headerless connections keep the renderer/native
+        // WebSocket (upstream #3067).
         return new DaemonClient({
           ...base,
-          ...webSocketConfig,
+          ...selectDirectTcpTransport({
+            headers: connection.headers,
+            createBridgeFactory: createDesktopWebSocketTransportFactory,
+            webSocketFactory: createAppWebSocketFactory(),
+          }),
           url: buildDaemonWebSocketUrl(connection.endpoint, {
             useTls: connection.useTls ?? false,
           }),
+          ...(hasConnectionHeaders(connection.headers) ? { headers: connection.headers } : {}),
         });
       }
       return new DaemonClient({
@@ -1838,6 +1849,7 @@ export class HostRuntimeStore {
     endpoint: string;
     useTls?: boolean;
     password?: string;
+    headers?: Record<string, string>;
     label?: string;
     existingClient?: DaemonClient;
   }): Promise<HostProfile> {
@@ -1852,6 +1864,7 @@ export class HostRuntimeStore {
         type: "directTcp",
         endpoint,
         useTls: input.useTls ?? false,
+        ...(input.headers ? { headers: input.headers } : {}),
       },
       existingClient: input.existingClient,
     });
@@ -1896,6 +1909,7 @@ export class HostRuntimeStore {
     endpoint: string;
     useTls?: boolean;
     password?: string;
+    headers?: Record<string, string>;
     label?: string;
   }): Promise<{ profile: HostProfile; serverId: string; hostname: string | null }> {
     const endpoint = normalizeHostPort(input.endpoint);
@@ -1908,6 +1922,7 @@ export class HostRuntimeStore {
         type: "directTcp",
         endpoint,
         useTls: input.useTls ?? false,
+        ...(input.headers ? { headers: input.headers } : {}),
       },
     });
   }
@@ -2841,12 +2856,14 @@ export interface HostMutations {
     endpoint: string;
     useTls?: boolean;
     password?: string;
+    headers?: Record<string, string>;
     label?: string;
   }) => Promise<HostProfile>;
   probeAndUpsertDirectConnection: (input: {
     endpoint: string;
     useTls?: boolean;
     password?: string;
+    headers?: Record<string, string>;
     label?: string;
   }) => Promise<{ profile: HostProfile; serverId: string; hostname: string | null }>;
   probeAndUpsertRemoteSshConnection: (input: {

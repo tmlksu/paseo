@@ -130,6 +130,10 @@ function collectSensitiveHostValues(hosts: HostProfile[]): string[] {
       values.add(connection.id);
       if (connection.type === "directTcp") {
         values.add(connection.endpoint);
+        // Fork: Cloudflare Access service-token header values are secrets.
+        for (const headerValue of Object.values(connection.headers ?? {})) {
+          values.add(headerValue);
+        }
       } else if (connection.type === "relay") {
         values.add(connection.relayEndpoint);
         values.add(connection.daemonPublicKeyB64);

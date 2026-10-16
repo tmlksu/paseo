@@ -21,7 +21,23 @@ export interface SshTransportTarget {
   daemonPort?: number;
 }
 
-export type TransportTarget = LocalTransportTarget | SshTransportTarget;
+export type TransportTarget = LocalTransportTarget | SshTransportTarget | WebSocketTransportTarget;
+
+// Fork: remote WebSocket sessions relayed through the main process so the
+// upgrade request can carry headers (Cloudflare Access service tokens).
+// Only header-carrying connections use this target; headerless direct
+// connections keep the renderer WebSocket (upstream #3067).
+export interface WebSocketTransportTarget {
+  transportType: "websocket";
+  url: string;
+  headers?: Record<string, string>;
+  protocols?: string[];
+}
+
+export interface WebSocketTransportOptions {
+  headers?: Record<string, string>;
+  protocols?: string[];
+}
 
 export interface TransportEventPayload {
   sessionId: string;
@@ -66,7 +82,7 @@ export interface TransportWebSocket {
 
 export interface LocalTransportManagerDependencies {
   resolveEndpoint(target: TransportTarget): Promise<TransportEndpoint>;
-  createWebSocket(url: string): TransportWebSocket;
+  createWebSocket(url: string, options?: WebSocketTransportOptions): TransportWebSocket;
   scheduleTimeout(callback: () => void, delayMs: number): () => void;
   emitEvent(payload: TransportEventPayload): void;
 }
@@ -107,7 +123,23 @@ function describeTransportTarget(target: TransportTarget): string {
   if (target.transportType === "ssh") {
     return `Remote SSH host ${target.host}`;
   }
+  if (target.transportType === "websocket") {
+    return "remote daemon WebSocket";
+  }
   return target.transportType === "pipe" ? "local daemon pipe" : "local daemon socket";
+}
+
+function websocketOptionsForTarget(target: TransportTarget): WebSocketTransportOptions | undefined {
+  if (target.transportType !== "websocket") {
+    return undefined;
+  }
+  if (!target.headers && !target.protocols) {
+    return undefined;
+  }
+  return {
+    ...(target.headers ? { headers: target.headers } : {}),
+    ...(target.protocols ? { protocols: target.protocols } : {}),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -128,7 +160,61 @@ export function parseTransportTarget(value: unknown): TransportTarget {
   }
 
   if (value.transportType === "ssh") return parseSshTransportTarget(value);
+  if (value.transportType === "websocket") return parseWebSocketTransportTarget(value);
   throw new Error("Unsupported desktop transport type.");
+}
+
+const HTTP_HEADER_NAME_PATTERN = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+function parseWebSocketTransportTarget(value: Record<string, unknown>): WebSocketTransportTarget {
+  const url = typeof value.url === "string" ? value.url.trim() : "";
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    throw new Error("WebSocket transport URL is invalid.");
+  }
+  if (parsed.protocol !== "ws:" && parsed.protocol !== "wss:") {
+    throw new Error("WebSocket transport URL must use ws:// or wss://.");
+  }
+  return {
+    transportType: "websocket",
+    url: parsed.toString(),
+    ...parseWebSocketTransportHeaders(value.headers),
+    ...parseWebSocketTransportProtocols(value.protocols),
+  };
+}
+
+function parseWebSocketTransportHeaders(value: unknown): { headers?: Record<string, string> } {
+  if (value === undefined) return {};
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("WebSocket transport headers must be an object.");
+  }
+  const headers: Record<string, string> = {};
+  for (const [name, headerValue] of Object.entries(value)) {
+    if (
+      !HTTP_HEADER_NAME_PATTERN.test(name) ||
+      typeof headerValue !== "string" ||
+      headerValue.length === 0 ||
+      /[\r\n]/.test(headerValue)
+    ) {
+      throw new Error("WebSocket transport header is invalid.");
+    }
+    headers[name] = headerValue;
+  }
+  return Object.keys(headers).length > 0 ? { headers } : {};
+}
+
+function parseWebSocketTransportProtocols(value: unknown): { protocols?: string[] } {
+  if (value === undefined) return {};
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.some((protocol) => typeof protocol !== "string" || protocol.length === 0)
+  ) {
+    throw new Error("WebSocket transport protocols must be a non-empty string array.");
+  }
+  return { protocols: [...value] };
 }
 
 function parseSshTransportTarget(value: Record<string, unknown>): SshTransportTarget {
@@ -268,6 +354,13 @@ async function resolveTransportEndpoint(target: TransportTarget): Promise<Transp
   if (target.transportType === "ssh") {
     return createSshProxy(target);
   }
+  if (target.transportType === "websocket") {
+    return {
+      url: target.url,
+      close: () => undefined,
+      failureDetail: () => null,
+    };
+  }
   return {
     url: buildLocalWebSocketUrl(target),
     close: () => undefined,
@@ -387,7 +480,7 @@ export function createLocalTransportManager(
 
     let ws: TransportWebSocket;
     try {
-      ws = deps.createWebSocket(endpoint.url);
+      ws = deps.createWebSocket(endpoint.url, websocketOptionsForTarget(session.target));
     } catch (error) {
       failOpeningSession(
         session,
@@ -542,7 +635,10 @@ export function createLocalTransportManager(
 
 const localTransportManager = createLocalTransportManager({
   resolveEndpoint: resolveTransportEndpoint,
-  createWebSocket: (url) => new WebSocket(url),
+  createWebSocket: (url, options) =>
+    options?.protocols && options.protocols.length > 0
+      ? new WebSocket(url, options.protocols, { headers: options.headers })
+      : new WebSocket(url, { headers: options?.headers }),
   scheduleTimeout: (callback, delayMs) => {
     const timeout = setTimeout(callback, delayMs);
     timeout.unref();
