@@ -856,6 +856,38 @@ test("passes password as HTTP bearer header and WebSocket subprotocol", async ()
   });
 });
 
+test("forwards configured upgrade headers alongside daemon password auth", async () => {
+  const mock = createMockTransport();
+  const transportFactory = vi.fn(() => mock.transport);
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    password: "shared-secret",
+    headers: {
+      "CF-Access-Client-Id": "id.access",
+      "CF-Access-Client-Secret": "secret-value",
+    },
+    logger,
+    reconnect: { enabled: false },
+    transportFactory,
+  });
+  clients.push(client);
+
+  const connectPromise = client.connect();
+  mock.triggerOpen();
+  await connectPromise;
+
+  expect(transportFactory).toHaveBeenCalledWith({
+    url: "ws://test",
+    headers: {
+      "CF-Access-Client-Id": "id.access",
+      "CF-Access-Client-Secret": "secret-value",
+      Authorization: "Bearer shared-secret",
+    },
+    protocols: ["paseo.bearer.shared-secret"],
+  });
+});
+
 test("keeps relay upgrade credentials out of the socket request", async () => {
   const mock = createMockTransport();
   const requests: Array<{ url: string; headers?: Record<string, string>; protocols?: string[] }> =

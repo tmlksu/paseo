@@ -259,7 +259,7 @@ function chooseConnectionAuth(
   let helloAuth: HelloAuth;
   if (localCredential) helloAuth = { kind: "localCredential", token: localCredential };
   else if (password) helloAuth = { kind: "password", password };
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = { ...config.headers };
   const compatibleBearer = localCredential ? null : compatibleBearerPassword(password);
   // COMPAT(headerAuth): added in v0.9.1, remove after 2027-03-24.
   if (compatibleBearer) headers.Authorization = `Bearer ${compatibleBearer}`;
@@ -397,6 +397,10 @@ export interface DaemonClientConfig {
   password?: string;
   localCredential?: () => string | undefined | Promise<string | undefined>;
   authHeader?: string;
+  // Fork: extra headers sent on the WebSocket upgrade request (e.g.
+  // Cloudflare Access service-token headers). Daemon password auth is
+  // unchanged and still takes precedence for the Authorization header.
+  headers?: Record<string, string>;
   suppressSendErrors?: boolean;
   transportFactory?: DaemonTransportFactory;
   webSocketFactory?: WebSocketFactory;
