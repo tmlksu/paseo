@@ -173,6 +173,51 @@ describe("normalizeStoredHostProfile", () => {
       daemonPort: 7777,
     });
   });
+
+  it("keeps stored Cloudflare Access headers on a direct TCP connection", () => {
+    const profile = normalizeStoredHostProfile({
+      serverId: "srv_cf",
+      connections: [
+        {
+          type: "directTcp",
+          endpoint: "daemon.example.com:443",
+          useTls: true,
+          headers: {
+            "CF-Access-Client-Id": "id.access",
+            "CF-Access-Client-Secret": "secret-value",
+          },
+        },
+      ],
+    });
+
+    expect(profile?.connections[0]).toEqual({
+      id: "direct:daemon.example.com:443",
+      type: "directTcp",
+      endpoint: "daemon.example.com:443",
+      useTls: true,
+      headers: {
+        "CF-Access-Client-Id": "id.access",
+        "CF-Access-Client-Secret": "secret-value",
+      },
+    });
+  });
+
+  it("drops malformed stored headers instead of the whole host profile", () => {
+    const profile = normalizeStoredHostProfile({
+      serverId: "srv_cf_bad",
+      connections: [
+        {
+          type: "directTcp",
+          endpoint: "daemon.example.com:443",
+          useTls: true,
+          headers: { "Bad Name": "value" },
+        },
+      ],
+    });
+
+    expect(profile).not.toBeNull();
+    expect(profile?.connections[0]).not.toHaveProperty("headers");
+  });
 });
 
 describe("createRemoteSshHostConnection", () => {
@@ -260,6 +305,39 @@ describe("upsertHostConnectionInProfiles", () => {
     expect("password" in profile.connections[0]!).toBe(false);
     expect(profile.password).toBe("new-secret");
     expect(profile.preferredConnectionId).toBe(replacement.id);
+  });
+
+  it("replaces a direct connection when its headers change", () => {
+    const existingConnection: HostConnection = {
+      id: "direct:daemon.example.com:443",
+      type: "directTcp",
+      endpoint: "daemon.example.com:443",
+      useTls: true,
+      headers: {
+        "CF-Access-Client-Id": "old.access",
+        "CF-Access-Client-Secret": "old-secret",
+      },
+    };
+    const existing: HostProfile = {
+      ...makeHost("srv_known"),
+      connections: [existingConnection],
+      preferredConnectionId: existingConnection.id,
+    };
+    const replacement: HostConnection = {
+      ...existingConnection,
+      headers: {
+        "CF-Access-Client-Id": "new.access",
+        "CF-Access-Client-Secret": "new-secret",
+      },
+    };
+
+    const [profile] = upsertHostConnectionInProfiles({
+      profiles: [existing],
+      serverId: "srv_known",
+      connection: replacement,
+    });
+
+    expect(profile.connections).toEqual([replacement]);
   });
 });
 

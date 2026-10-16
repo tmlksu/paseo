@@ -4,6 +4,7 @@ import type {
 } from "@getpaseo/client/internal/daemon-client";
 import { validatePort, validateSshHost } from "@getpaseo/protocol/ssh-transport";
 import type { DesktopDaemonTransportTarget } from "./desktop-daemon";
+import { isElectronRuntime } from "@/desktop/host";
 import {
   defaultLocalDaemonTransportRpc,
   type LocalDaemonTransportEvent,
@@ -40,6 +41,8 @@ export function buildDesktopDaemonTransportUrl(target: DesktopDaemonTransportTar
     if (target.daemonPort !== undefined) {
       url.searchParams.set("daemonPort", String(target.daemonPort));
     }
+  } else if (target.transportType === "websocket") {
+    throw new Error("WebSocket bridge targets are passed directly, not encoded in a URL.");
   } else {
     url.searchParams.set("path", target.transportPath);
   }
@@ -89,125 +92,150 @@ export function createDesktopDaemonTransportFactory(
 ): DaemonTransportFactory | null {
   return ({ url }) => {
     const target = parseDesktopDaemonTransportUrl(url);
-    const sessionId = `local-session-${globalThis.crypto.randomUUID()}`;
-    let unlisten: (() => void) | null = null;
-    let disposed = false;
-    let didEmitOpen = false;
+    return createSessionTransport(rpc, target);
+  };
+}
 
-    const openHandlers = new Set<() => void>();
-    const closeHandlers = new Set<(event?: unknown) => void>();
-    const errorHandlers = new Set<(event?: unknown) => void>();
-    const messageHandlers = new Set<(data: unknown, isBinary: boolean) => void>();
+// Fork: main-process WebSocket bridge for header-carrying remote
+// connections (Cloudflare Access). Null off Electron; headerless direct
+// connections never reach here (see selectDirectTcpTransport).
+export function createDesktopWebSocketTransportFactory(
+  rpc: LocalDaemonTransportRpc = defaultLocalDaemonTransportRpc,
+): DaemonTransportFactory | null {
+  if (!isElectronRuntime()) {
+    return null;
+  }
+  return ({ url, headers, protocols }) =>
+    createSessionTransport(rpc, {
+      transportType: "websocket",
+      url,
+      ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+      ...(protocols && protocols.length > 0 ? { protocols } : {}),
+    });
+}
 
-    const emitOpen = () => {
-      if (didEmitOpen || disposed) {
+function createSessionTransport(
+  rpc: LocalDaemonTransportRpc,
+  target: DesktopDaemonTransportTarget,
+): DaemonTransport {
+  const sessionId = `local-session-${globalThis.crypto.randomUUID()}`;
+  let unlisten: (() => void) | null = null;
+  let disposed = false;
+  let didEmitOpen = false;
+
+  const openHandlers = new Set<() => void>();
+  const closeHandlers = new Set<(event?: unknown) => void>();
+  const errorHandlers = new Set<(event?: unknown) => void>();
+  const messageHandlers = new Set<(data: unknown, isBinary: boolean) => void>();
+
+  const emitOpen = () => {
+    if (didEmitOpen || disposed) {
+      return;
+    }
+    didEmitOpen = true;
+    for (const handler of openHandlers) {
+      handler();
+    }
+  };
+  const emitClose = (event?: unknown) => {
+    for (const handler of closeHandlers) {
+      handler(event);
+    }
+  };
+  const emitError = (event?: unknown) => {
+    if (disposed) {
+      return;
+    }
+    for (const handler of errorHandlers) {
+      handler(event);
+    }
+  };
+  const emitMessage = (data: unknown, isBinary: boolean) => {
+    for (const handler of messageHandlers) {
+      handler(data, isBinary);
+    }
+  };
+
+  const handleEvent = (payload: LocalDaemonTransportEvent) => {
+    if (disposed || payload.sessionId !== sessionId) {
+      return;
+    }
+    if (payload.kind === "open") {
+      emitOpen();
+      return;
+    }
+    if (payload.kind === "message") {
+      if (payload.text) {
+        emitMessage(payload.text, false);
         return;
       }
-      didEmitOpen = true;
-      for (const handler of openHandlers) {
-        handler();
+      if (payload.binaryBase64) {
+        emitMessage(decodeBase64ToBytes(payload.binaryBase64), true);
       }
-    };
-    const emitClose = (event?: unknown) => {
-      for (const handler of closeHandlers) {
-        handler(event);
+      return;
+    }
+    if (payload.kind === "close") {
+      emitClose(payload);
+      return;
+    }
+    emitError(payload.error ?? "Local daemon transport error");
+  };
+
+  void (async () => {
+    try {
+      const cleanup = await rpc.listenToEvents(handleEvent);
+      if (disposed) {
+        cleanup();
+        return;
       }
-    };
-    const emitError = (event?: unknown) => {
+      unlisten = cleanup;
+
+      await rpc.openSession({ sessionId, target });
+    } catch (error) {
+      emitError(error);
+    }
+  })();
+
+  const transport: DaemonTransport = {
+    send: (data) => {
+      if (!didEmitOpen) {
+        return;
+      }
+      if (typeof data === "string") {
+        void rpc.sendMessage({ sessionId, text: data }).catch((error) => emitError(error));
+        return;
+      }
+      const binaryBase64 = encodeBinaryToBase64(
+        data instanceof ArrayBuffer ? data : new Uint8Array(data),
+      );
+      void rpc.sendMessage({ sessionId, binaryBase64 }).catch((error) => emitError(error));
+    },
+    close: () => {
       if (disposed) {
         return;
       }
-      for (const handler of errorHandlers) {
-        handler(event);
-      }
-    };
-    const emitMessage = (data: unknown, isBinary: boolean) => {
-      for (const handler of messageHandlers) {
-        handler(data, isBinary);
-      }
-    };
-
-    const handleEvent = (payload: LocalDaemonTransportEvent) => {
-      if (disposed || payload.sessionId !== sessionId) {
-        return;
-      }
-      if (payload.kind === "open") {
-        emitOpen();
-        return;
-      }
-      if (payload.kind === "message") {
-        if (payload.text) {
-          emitMessage(payload.text, false);
-          return;
-        }
-        if (payload.binaryBase64) {
-          emitMessage(decodeBase64ToBytes(payload.binaryBase64), true);
-        }
-        return;
-      }
-      if (payload.kind === "close") {
-        emitClose(payload);
-        return;
-      }
-      emitError(payload.error ?? "Local daemon transport error");
-    };
-
-    void (async () => {
-      try {
-        const cleanup = await rpc.listenToEvents(handleEvent);
-        if (disposed) {
-          cleanup();
-          return;
-        }
-        unlisten = cleanup;
-
-        await rpc.openSession({ sessionId, target });
-      } catch (error) {
-        emitError(error);
-      }
-    })();
-
-    const transport: DaemonTransport = {
-      send: (data) => {
-        if (!didEmitOpen) {
-          return;
-        }
-        if (typeof data === "string") {
-          void rpc.sendMessage({ sessionId, text: data }).catch((error) => emitError(error));
-          return;
-        }
-        const binaryBase64 = encodeBinaryToBase64(
-          data instanceof ArrayBuffer ? data : new Uint8Array(data),
-        );
-        void rpc.sendMessage({ sessionId, binaryBase64 }).catch((error) => emitError(error));
-      },
-      close: () => {
-        if (disposed) {
-          return;
-        }
-        disposed = true;
-        void rpc.closeSession(sessionId).catch((error) => emitError(error));
-        unlisten?.();
-        unlisten = null;
-      },
-      onMessage: (handler) => {
-        messageHandlers.add(handler);
-        return () => messageHandlers.delete(handler);
-      },
-      onOpen: (handler) => {
-        openHandlers.add(handler);
-        return () => openHandlers.delete(handler);
-      },
-      onClose: (handler) => {
-        closeHandlers.add(handler);
-        return () => closeHandlers.delete(handler);
-      },
-      onError: (handler) => {
-        errorHandlers.add(handler);
-        return () => errorHandlers.delete(handler);
-      },
-    };
-
-    return transport;
+      disposed = true;
+      void rpc.closeSession(sessionId).catch((error) => emitError(error));
+      unlisten?.();
+      unlisten = null;
+    },
+    onMessage: (handler) => {
+      messageHandlers.add(handler);
+      return () => messageHandlers.delete(handler);
+    },
+    onOpen: (handler) => {
+      openHandlers.add(handler);
+      return () => openHandlers.delete(handler);
+    },
+    onClose: (handler) => {
+      closeHandlers.add(handler);
+      return () => closeHandlers.delete(handler);
+    },
+    onError: (handler) => {
+      errorHandlers.add(handler);
+      return () => errorHandlers.delete(handler);
+    },
   };
+
+  return transport;
 }
