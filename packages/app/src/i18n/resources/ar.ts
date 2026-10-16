@@ -1705,6 +1705,10 @@ export const ar: TranslationResources = {
         title: "اتصال مباشر",
         description: "الشبكة المحلية أو VPN.",
       },
+      cloudflareAccess: {
+        title: "Cloudflare Access",
+        description: "Tunnel + Access with a service token.",
+      },
       remoteSsh: {
         title: "SSH عن بُعد",
         description: "الاتصال عبر عميل SSH لسطح المكتب.",
@@ -1759,6 +1763,34 @@ export const ar: TranslationResources = {
         unableToConnect:
           "غير قادر على الاتصال. تحقق من المضيف /port ومن إمكانية الوصول إلى البرنامج الخفي.",
         details: "التفاصيل:{{detail}}",
+      },
+    },
+    cloudflareAccess: {
+      title: "Cloudflare Access",
+      helper: "Connect to a Paseo daemon behind Cloudflare Tunnel + Access with a service token.",
+      fields: {
+        host: "Host",
+        port: "Port",
+        clientId: "Client ID",
+        clientSecret: "Client Secret",
+        password: "Daemon password",
+        optional: "Optional",
+        useSsl: "Use SSL",
+      },
+      passwordVisibility: {
+        show: "Show secret",
+        hide: "Hide secret",
+      },
+      actions: {
+        cancel: "Cancel",
+        connect: "Connect",
+        connecting: "Connecting...",
+      },
+      errors: {
+        hostRequired: "Host is required",
+        invalidPort: "Port must be between 1 and 65535",
+        credentialsRequired: "Client ID and client secret are required",
+        failedToConnect: "Unable to connect through Cloudflare Access. {{detail}}",
       },
     },
     remoteSsh: {

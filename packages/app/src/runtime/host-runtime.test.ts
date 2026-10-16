@@ -3553,6 +3553,49 @@ describe("HostRuntimeStore", () => {
     store.syncHosts([]);
   });
 
+  it("probeAndUpsertDirectConnection stores Cloudflare Access headers on the connection", async () => {
+    const probed: HostConnection[] = [];
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async ({ host, connection }) => {
+          probed.push(connection);
+          return {
+            client: makeConnectedProbeClient(5) as unknown as DaemonClient,
+            serverId: host.serverId || "srv_cf",
+            hostname: host.label ?? null,
+          };
+        },
+        getClientId: async () => "cid_test_runtime",
+      },
+    });
+
+    const headers = {
+      "CF-Access-Client-Id": "id.access",
+      "CF-Access-Client-Secret": "secret-value",
+    };
+    await store.probeAndUpsertDirectConnection({
+      endpoint: "daemon.example.com:443",
+      useTls: true,
+      headers,
+    });
+
+    expect(probed).toHaveLength(1);
+    expect(probed[0]).toMatchObject({ type: "directTcp", headers });
+    const host = store.getHosts().find((entry) => entry.serverId === "srv_cf");
+    expect(host?.connections).toEqual([
+      {
+        id: "direct:daemon.example.com:443",
+        type: "directTcp",
+        endpoint: "daemon.example.com:443",
+        useTls: true,
+        headers,
+      },
+    ]);
+
+    store.syncHosts([]);
+  });
+
   it("probeAndUpsertConnection learns the real server id before storing a direct host", async () => {
     const connection: HostConnection = {
       id: "direct:lan:6767",

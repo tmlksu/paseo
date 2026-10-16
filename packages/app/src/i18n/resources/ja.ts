@@ -1722,6 +1722,10 @@ export const ja: TranslationResources = {
         title: "直接接続",
         description: "ローカルネットワークまたはVPN。",
       },
+      cloudflareAccess: {
+        title: "Cloudflare Access",
+        description: "サービストークンで Tunnel + Access 経由。",
+      },
       remoteSsh: {
         title: "リモート SSH",
         description: "デスクトップの SSH クライアント経由で接続します。",
@@ -1775,6 +1779,35 @@ export const ja: TranslationResources = {
         tlsError: "TLSエラー。直接接続は、デーモンの前にTLS終端がある場合のみSSLを使用します。",
         unableToConnect: "接続できません。ホスト/ポートとデーモンが到達可能かを確認してください。",
         details: "詳細: {{detail}}",
+      },
+    },
+    cloudflareAccess: {
+      title: "Cloudflare Access",
+      helper:
+        "Cloudflare Tunnel + Access の後ろにある Paseo デーモンにサービストークンで接続します。",
+      fields: {
+        host: "ホスト",
+        port: "ポート",
+        clientId: "クライアント ID",
+        clientSecret: "クライアントシークレット",
+        password: "デーモンのパスワード",
+        optional: "任意",
+        useSsl: "SSLを使用",
+      },
+      passwordVisibility: {
+        show: "シークレットを表示",
+        hide: "シークレットを非表示",
+      },
+      actions: {
+        cancel: "キャンセル",
+        connect: "接続",
+        connecting: "接続中...",
+      },
+      errors: {
+        hostRequired: "ホストは必須です",
+        invalidPort: "ポートは1から65535の間である必要があります",
+        credentialsRequired: "クライアント ID とクライアントシークレットは必須です",
+        failedToConnect: "Cloudflare Access 経由で接続できません。{{detail}}",
       },
     },
     remoteSsh: {

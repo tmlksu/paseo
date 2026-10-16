@@ -10,11 +10,13 @@ import {
   ExternalLink,
   Settings,
   Terminal,
+  ShieldCheck,
 } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HostProfile } from "@/types/host-connection";
 import { getHostRuntimeStore, isHostRuntimeConnected, useHosts } from "@/runtime/host-runtime";
 import { AddHostModal } from "./add-host-modal";
+import { AddCloudflareAccessHostModal } from "./add-cloudflare-access-host-modal";
 import { AddRemoteSshHostModal } from "./add-remote-ssh-host-modal";
 import { PairLinkModal } from "./pair-link-modal";
 import { Button } from "@/components/ui/button";
@@ -28,7 +30,7 @@ import { isWeb, isNative } from "@/constants/platform";
 import { isElectronRuntime } from "@/desktop/host";
 
 interface WelcomeAction {
-  key: "scan-qr" | "direct-connection" | "remote-ssh" | "paste-pairing-link";
+  key: "scan-qr" | "direct-connection" | "cloudflare-access" | "remote-ssh" | "paste-pairing-link";
   label: string;
   testID: string;
   primary: boolean;
@@ -174,6 +176,7 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   const appVersion = resolveAppVersion();
   const appVersionText = formatVersionWithPrefix(appVersion);
   const [isDirectOpen, setIsDirectOpen] = useState(false);
+  const [isCloudflareAccessOpen, setIsCloudflareAccessOpen] = useState(false);
   const [isRemoteSshOpen, setIsRemoteSshOpen] = useState(false);
   const [isPasteLinkOpen, setIsPasteLinkOpen] = useState(false);
   const hosts = useHosts();
@@ -198,6 +201,8 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
 
   const handleOpenDirect = useCallback(() => setIsDirectOpen(true), []);
   const handleCloseDirect = useCallback(() => setIsDirectOpen(false), []);
+  const handleOpenCloudflareAccess = useCallback(() => setIsCloudflareAccessOpen(true), []);
+  const handleCloseCloudflareAccess = useCallback(() => setIsCloudflareAccessOpen(false), []);
   const handleOpenRemoteSsh = useCallback(() => setIsRemoteSshOpen(true), []);
   const handleCloseRemoteSsh = useCallback(() => setIsRemoteSshOpen(false), []);
   const handleOpenPasteLink = useCallback(() => setIsPasteLinkOpen(true), []);
@@ -272,6 +277,19 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
     });
   }
 
+  // Fork: browser WebSocket cannot set upgrade headers, so plain web gets no
+  // Cloudflare Access entry.
+  if (isNative || isElectronRuntime()) {
+    actions.splice(isElectronRuntime() ? 2 : 1, 0, {
+      key: "cloudflare-access",
+      label: t("pairing.connectionMethods.cloudflareAccess.title"),
+      testID: "welcome-cloudflare-access",
+      primary: false,
+      icon: ShieldCheck,
+      onPress: handleOpenCloudflareAccess,
+    });
+  }
+
   const scrollContentContainerStyle = useMemo(
     () => [styles.container, { paddingBottom: theme.spacing[6] + insets.bottom }],
     [theme.spacing, insets.bottom],
@@ -320,6 +338,12 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
         <AddHostModal
           visible={isDirectOpen}
           onClose={handleCloseDirect}
+          onSaved={handleHostSaved}
+        />
+
+        <AddCloudflareAccessHostModal
+          visible={isCloudflareAccessOpen}
+          onClose={handleCloseCloudflareAccess}
           onSaved={handleHostSaved}
         />
 
