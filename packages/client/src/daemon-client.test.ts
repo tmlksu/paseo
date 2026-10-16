@@ -857,6 +857,7 @@ test("passes password as HTTP bearer header and WebSocket subprotocol", async ()
 });
 
 test("forwards configured upgrade headers alongside daemon password auth", async () => {
+  const logger = createMockLogger();
   const mock = createMockTransport();
   const transportFactory = vi.fn(() => mock.transport);
   const client = new DaemonClient({

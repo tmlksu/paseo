@@ -137,6 +137,7 @@ describe("test-daemon-connection connectToDaemon", () => {
     // configured headers because it never installed a header-capable
     // WebSocket factory, so Cloudflare Access answered 200 instead of 101.
     const { connectToDaemon } = await import("./test-daemon-connection");
+    const { createAppWebSocketFactory } = await import("@/runtime/websocket-factory");
     const headers = {
       "CF-Access-Client-Id": "id.access",
       "CF-Access-Client-Secret": "secret-value",
@@ -157,26 +158,9 @@ describe("test-daemon-connection connectToDaemon", () => {
     const config = probe.createdConfigs()[0];
     expect(config?.headers).toEqual(headers);
     expect(config?.transportFactory).toBeUndefined();
-    expect(config?.webSocketFactory).toBeTypeOf("function");
-
-    // The installed factory must actually forward headers to the socket
-    // constructor (the header-dropping default factory would lose them).
-    const seen: Array<{ url: string; protocols?: unknown; options?: unknown }> = [];
-    const previousWebSocket = (globalThis as { WebSocket?: unknown }).WebSocket;
-    (globalThis as { WebSocket?: unknown }).WebSocket = function FakeWebSocket(
-      url: string,
-      protocols?: unknown,
-      options?: unknown,
-    ) {
-      seen.push({ url, protocols, options });
-    };
-    try {
-      config?.webSocketFactory?.("wss://daemon.example.com:443/ws", { headers });
-    } finally {
-      (globalThis as { WebSocket?: unknown }).WebSocket = previousWebSocket;
-    }
-    expect(seen).toHaveLength(1);
-    expect(seen[0]?.options).toEqual({ headers });
+    // The probe installs the same factory the live client uses; without it
+    // DaemonClient falls back to the header-dropping default factory.
+    expect(config?.webSocketFactory).toBe(createAppWebSocketFactory());
   });
 
   it("routes header-carrying probes through the desktop bridge when available", async () => {

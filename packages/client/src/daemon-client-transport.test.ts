@@ -9,6 +9,10 @@ import {
   encodeUtf8String,
   extractRelayMessage,
 } from "./daemon-client-transport.js";
+import {
+  defaultWebSocketFactory,
+  nativeWebSocketFactory,
+} from "./daemon-client-websocket-transport.js";
 
 const createClientChannelMock = vi.hoisted(() => vi.fn());
 
@@ -94,6 +98,62 @@ describe("daemon-client transport helpers", () => {
       headers: { Authorization: "Bearer shared-secret" },
       protocols: ["paseo.bearer.shared-secret"],
     });
+  });
+
+  test("nativeWebSocketFactory forwards upgrade headers to the socket", () => {
+    const seen: Array<{ url: string; protocols?: unknown; options?: unknown }> = [];
+    const previousWebSocket = (globalThis as { WebSocket?: unknown }).WebSocket;
+    (globalThis as { WebSocket?: unknown }).WebSocket = function FakeWebSocket(
+      url: string,
+      protocols?: unknown,
+      options?: unknown,
+    ) {
+      seen.push({ url, protocols, options });
+    };
+    try {
+      nativeWebSocketFactory("wss://daemon.example.com:443/ws", {
+        headers: {
+          "CF-Access-Client-Id": "id.access",
+          "CF-Access-Client-Secret": "secret-value",
+        },
+      });
+    } finally {
+      (globalThis as { WebSocket?: unknown }).WebSocket = previousWebSocket;
+    }
+    expect(seen).toEqual([
+      {
+        url: "wss://daemon.example.com:443/ws",
+        protocols: undefined,
+        options: {
+          headers: {
+            "CF-Access-Client-Id": "id.access",
+            "CF-Access-Client-Secret": "secret-value",
+          },
+        },
+      },
+    ]);
+  });
+
+  test("defaultWebSocketFactory cannot send upgrade headers", () => {
+    // Documents the platform split behind the Electron bridge and the
+    // probe's header-capable factory: the standard WebSocket constructor
+    // takes no headers argument, so they are dropped here by design.
+    const seen: Array<{ url: string; protocols?: unknown }> = [];
+    const previousWebSocket = (globalThis as { WebSocket?: unknown }).WebSocket;
+    (globalThis as { WebSocket?: unknown }).WebSocket = function FakeWebSocket(
+      url: string,
+      protocols?: unknown,
+    ) {
+      seen.push({ url, protocols });
+    };
+    try {
+      defaultWebSocketFactory("wss://daemon.example.com:443/ws", {
+        headers: { "CF-Access-Client-Id": "id.access" },
+      });
+    } finally {
+      (globalThis as { WebSocket?: unknown }).WebSocket = previousWebSocket;
+    }
+    expect(seen).toEqual([{ url: "wss://daemon.example.com:443/ws", protocols: undefined }]);
   });
 
   test("createWebSocketTransportFactory rejects sends when socket is not open", () => {
