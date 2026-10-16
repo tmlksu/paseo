@@ -1950,6 +1950,8 @@ export const fr: TranslationResources = {
   downloads: {
     requestTokenFailed: "Impossible d’obtenir le token de téléchargement.",
     hostUnavailable: "L’hôte de téléchargement est indisponible.",
+    cloudflareAccessUnsupported:
+      "File downloads over Cloudflare Access aren't supported on desktop yet. Use the mobile app to download this file.",
     cancelled: "Téléchargement annulé.",
     failed: "Impossible de télécharger le fichier.",
     shareFile: "Partager le fichier",

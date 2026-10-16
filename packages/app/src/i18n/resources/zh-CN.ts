@@ -1884,6 +1884,8 @@ export const zhCN: TranslationResources = {
   downloads: {
     requestTokenFailed: "请求下载 token 失败。",
     hostUnavailable: "下载 Host 不可用。",
+    cloudflareAccessUnsupported:
+      "File downloads over Cloudflare Access aren't supported on desktop yet. Use the mobile app to download this file.",
     cancelled: "下载已取消。",
     failed: "下载文件失败。",
     shareFile: "共享文件",

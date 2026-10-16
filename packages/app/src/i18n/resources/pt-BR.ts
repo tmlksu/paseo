@@ -1939,6 +1939,8 @@ export const ptBR: TranslationResources = {
   downloads: {
     requestTokenFailed: "Falha ao solicitar token de download.",
     hostUnavailable: "Host de download indisponível.",
+    cloudflareAccessUnsupported:
+      "File downloads over Cloudflare Access aren't supported on desktop yet. Use the mobile app to download this file.",
     cancelled: "Download cancelado.",
     failed: "Falha ao baixar arquivo.",
     shareFile: "Compartilhar arquivo",

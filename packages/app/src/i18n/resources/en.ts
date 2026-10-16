@@ -1931,6 +1931,8 @@ export const en = {
   downloads: {
     requestTokenFailed: "Failed to request download token.",
     hostUnavailable: "Download host is unavailable.",
+    cloudflareAccessUnsupported:
+      "File downloads over Cloudflare Access aren't supported on desktop yet. Use the mobile app to download this file.",
     cancelled: "Download was cancelled.",
     failed: "Failed to download file.",
     shareFile: "Share file",

@@ -1906,6 +1906,8 @@ export const ar: TranslationResources = {
   downloads: {
     requestTokenFailed: "فشل طلب رمز التنزيل.",
     hostUnavailable: "مضيف التنزيل غير متاح.",
+    cloudflareAccessUnsupported:
+      "File downloads over Cloudflare Access aren't supported on desktop yet. Use the mobile app to download this file.",
     cancelled: "تم إلغاء التنزيل.",
     failed: "فشل تنزيل الملف.",
     shareFile: "مشاركة الملف",

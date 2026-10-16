@@ -1938,6 +1938,8 @@ export const ru: TranslationResources = {
   downloads: {
     requestTokenFailed: "Не удалось запросить токен загрузки.",
     hostUnavailable: "Хост загрузки недоступен.",
+    cloudflareAccessUnsupported:
+      "File downloads over Cloudflare Access aren't supported on desktop yet. Use the mobile app to download this file.",
     cancelled: "Загрузка отменена.",
     failed: "Не удалось загрузить файл.",
     shareFile: "Поделиться файлом",

@@ -1926,6 +1926,8 @@ export const ja: TranslationResources = {
   downloads: {
     requestTokenFailed: "ダウンロードトークンのリクエストに失敗しました。",
     hostUnavailable: "ダウンロードホストが利用できません。",
+    cloudflareAccessUnsupported:
+      "Cloudflare Access 経由のファイルダウンロードはデスクトップ版ではまだサポートされていません。モバイルアプリでダウンロードしてください。",
     cancelled: "ダウンロードがキャンセルされました。",
     failed: "ファイルのダウンロードに失敗しました。",
     shareFile: "ファイルを共有",
